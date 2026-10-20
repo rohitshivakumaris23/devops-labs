@@ -98,3 +98,5 @@ A GitHub Personal Access Token (PAT) added to Jenkins as a Username/Password cre
 
 ## Conclusion
 Jenkinsfile configured with SCM polling trigger (`H/2 * * * *`). Requires GitHub repository URL to complete end-to-end verification. Once the repo URL is provided and code is pushed, Jenkins will detect commits and trigger builds automatically.
+
+Jenkins polling test
