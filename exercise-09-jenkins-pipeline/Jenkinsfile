@@ -1,0 +1,92 @@
+pipeline {
+    agent any
+    
+    environment {
+        APP_NAME = "flask-devops-app"
+        APP_VERSION = "1.0.0"
+        TEST_DIR = "exercise-09-jenkins-pipeline"
+    }
+    
+    stages {
+        stage('Build') {
+            steps {
+                echo "========== STAGE: BUILD =========="
+                echo "Building ${APP_NAME} v${APP_VERSION}"
+                sh '''
+                    echo "Python version:"
+                    python3 --version 2>/dev/null || python --version
+                    echo "Creating virtual environment..."
+                    python3 -m venv venv 2>/dev/null || python -m venv venv
+                    echo "Installing dependencies..."
+                    ./venv/bin/pip install flask==3.0.3 pytest 2>/dev/null || venv\\Scripts\\pip install flask==3.0.3 pytest
+                    echo "Build complete."
+                '''
+            }
+        }
+        
+        stage('Test') {
+            steps {
+                echo "========== STAGE: TEST =========="
+                sh '''
+                    echo "Running unit tests..."
+                    ./venv/bin/python -m pytest tests/test_app.py -v --tb=short 2>/dev/null || \
+                    venv\\Scripts\\python -m pytest tests\\test_app.py -v --tb=short
+                    echo "All tests passed."
+                '''
+            }
+        }
+        
+        stage('Deploy') {
+            steps {
+                echo "========== STAGE: DEPLOY =========="
+                sh '''
+                    echo "Deploying application..."
+                    echo "APP_NAME=${APP_NAME}"
+                    echo "APP_VERSION=${APP_VERSION}"
+                    echo "BUILD_NUMBER=${BUILD_NUMBER}"
+                    echo "Deployment simulation complete."
+                '''
+            }
+        }
+        
+        stage('Run Application') {
+            steps {
+                echo "========== STAGE: RUN APPLICATION =========="
+                sh '''
+                    # Start application in background
+                    nohup ./venv/bin/python app.py &
+                    sleep 3
+                    # Health check
+                    curl -f http://localhost:5000/health || { echo "Health check failed!"; exit 1; }
+                    echo "Application is healthy."
+                    curl http://localhost:5000/ || true
+                '''
+            }
+        }
+        
+        stage('Cleanup') {
+            steps {
+                echo "========== STAGE: CLEANUP =========="
+                sh '''
+                    echo "Stopping application..."
+                    pkill -f "python app.py" || true
+                    echo "Removing virtual environment..."
+                    rm -rf venv || true
+                    echo "Cleanup complete."
+                '''
+            }
+        }
+    }
+    
+    post {
+        success {
+            echo "Pipeline completed successfully! Build #${BUILD_NUMBER}"
+        }
+        failure {
+            echo "Pipeline FAILED at stage. Check logs above."
+        }
+        always {
+            echo "Pipeline finished. Timestamp: ${new Date()}"
+        }
+    }
+}

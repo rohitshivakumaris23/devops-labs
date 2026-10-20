@@ -1,0 +1,29 @@
+groups:
+  - name: flask_alerts
+    rules:
+      - alert: HighRequestRate
+        expr: rate(flask_requests_total[1m]) > 10
+        for: 1m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High request rate on Flask app"
+          description: "Flask app is receiving more than 10 req/s for 1 minute."
+
+      - alert: SlowResponseTime
+        expr: histogram_quantile(0.95, rate(flask_request_duration_seconds_bucket[5m])) > 0.5
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Flask app 95th percentile response time exceeds 500ms"
+          description: "The p95 response time has been over 500ms for 2 minutes."
+
+      - alert: FlaskAppDown
+        expr: up{job="flask-app"} == 0
+        for: 30s
+        labels:
+          severity: critical
+        annotations:
+          summary: "Flask application is down"
+          description: "Prometheus cannot scrape the Flask app metrics endpoint."

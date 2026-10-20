@@ -1,0 +1,63 @@
+pipeline {
+    agent any
+    
+    triggers {
+        // SCM polling - checks for new commits every 2 minutes
+        pollSCM('H/2 * * * *')
+    }
+    
+    environment {
+        REPO_URL = 'https://github.com/YOUR_USERNAME/devops-labs.git'
+        BRANCH = 'main'
+    }
+    
+    stages {
+        stage('Checkout') {
+            steps {
+                echo "========== STAGE: CHECKOUT =========="
+                checkout scmGit(
+                    branches: [[name: "*/${BRANCH}"]],
+                    userRemoteConfigs: [[url: "${REPO_URL}"]]
+                )
+                echo "Code checked out from ${REPO_URL}"
+                sh 'ls -la'
+            }
+        }
+        
+        stage('Verify') {
+            steps {
+                echo "========== STAGE: VERIFY =========="
+                sh '''
+                    echo "Repository contents:"
+                    ls -la
+                    echo "Git log (last 3 commits):"
+                    git log --oneline -3
+                    echo "Current branch:"
+                    git branch --show-current
+                '''
+            }
+        }
+        
+        stage('Build Check') {
+            steps {
+                echo "========== STAGE: BUILD CHECK =========="
+                sh '''
+                    echo "Checking for Python requirements..."
+                    if [ -f "requirements.txt" ]; then
+                        cat requirements.txt
+                    fi
+                    echo "Repository structure verified."
+                '''
+            }
+        }
+    }
+    
+    post {
+        success {
+            echo "GitHub integration build #${BUILD_NUMBER} succeeded!"
+        }
+        failure {
+            echo "Build #${BUILD_NUMBER} failed. Check SCM connectivity."
+        }
+    }
+}
