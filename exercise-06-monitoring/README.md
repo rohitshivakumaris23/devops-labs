@@ -1,111 +1,105 @@
-# Exercise 06 — Prometheus and Grafana Monitoring
+# Exercise 06 — Prometheus and Grafana
 
 ## Objective
-Create a monitored Flask application that exposes Prometheus metrics, configure Prometheus scraping, set up a Grafana dashboard with meaningful metrics panels, and create alert rules.
+Create a Flask application that exposes Prometheus metrics, configure Prometheus to scrape it, show the metrics on a Grafana dashboard, and define example alert rules.
 
 ## Technologies Used
-- Flask 3.0.3 + prometheus-client 0.20.0
-- Prometheus (prom/prometheus:latest)
-- Grafana (grafana/grafana:latest)
+- Flask with `prometheus-client`
+- Prometheus (`prom/prometheus`)
+- Grafana (`grafana/grafana`)
 - Docker Compose
+
+## Prerequisites
+- Docker Desktop running
+- Ports 5006, 9090 and 3000 free
+- Minikube and Jenkins stopped, to free memory
 
 ## Project Structure
 ```
 exercise-06-monitoring/
-├── app.py                       # Flask app exposing /metrics endpoint
-├── requirements.txt             # flask + prometheus-client
-├── Dockerfile                   # Python:3.11-slim
-├── docker-compose.yml           # Flask + Prometheus + Grafana stack
-├── prometheus.yml               # Prometheus scrape configuration
-├── alert_rules.yml              # Alert rules (3 rules defined)
-├── grafana-datasource.yml       # Auto-configures Prometheus datasource
-├── grafana-dashboard-config.yml # Dashboard provisioning config
-├── grafana-dashboard.json       # Pre-built Flask metrics dashboard
+├── app.py                  # Flask app exposing /metrics
+├── Dockerfile
+├── docker-compose.yml      # flask-app, prometheus, grafana
+├── prometheus.yml          # scrape configuration
+├── alert_rules.yml         # 3 example alert rules
+├── grafana-dashboard.json  # dashboard definition
+├── grafana-*.yml           # Grafana provisioning
+├── evidence.txt
 └── README.md
 ```
 
 ## Step-by-Step Commands
-
-### 1. Start the Full Monitoring Stack
 ```powershell
+cd E:\devops-labs\exercise-06-monitoring
 docker compose up -d --build
-```
-
-### 2. Verify Services
-```powershell
 docker compose ps
+1..50 | ForEach-Object { Invoke-RestMethod http://localhost:5006/ | Out-Null }
 ```
+Then open:
+- http://localhost:5006/metrics
+- http://localhost:9090/targets
+- http://localhost:9090/alerts
+- http://localhost:3000 (demo login from the compose file)
 
-### 3. Access Endpoints
-| Service | URL | Credentials |
-|---|---|---|
-| Flask App | http://localhost:5006 | — |
-| Flask Metrics | http://localhost:5006/metrics | — |
-| Prometheus | http://localhost:9090 | — |
-| Grafana | http://localhost:3000 | admin / admin123 |
-
-### 4. Generate Metrics
+Stop the stack when finished:
 ```powershell
-# Hit the app endpoints to generate traffic
-for ($i=0; $i -lt 20; $i++) {
-    Invoke-RestMethod http://localhost:5006/
-    Invoke-RestMethod http://localhost:5006/health
-    Invoke-RestMethod http://localhost:5006/data
-    Start-Sleep -Milliseconds 200
-}
+docker compose down
 ```
 
-### 5. Verify Prometheus Scraping
-- Go to http://localhost:9090/targets
-- `flask-app` should show **UP**
+## Configuration Explanation
+- **`/metrics`:** the Flask app exposes request counters, request duration and active requests.
+- **`prometheus.yml`:** Prometheus scrapes `flask-app:5000/metrics` using the service name on the Docker network.
+- **`alert_rules.yml`:** group `flask_alerts` with three rules:
+  - `HighRequestRate`: `rate(flask_requests_total[1m]) > 10` for 1m (warning)
+  - `SlowResponseTime`: p95 request duration above 0.5 s for 2m (warning)
+  - `FlaskAppDown`: `up{job="flask-app"} == 0` for 30s (critical)
+- **Grafana:** its datasource URL must be `http://prometheus:9090`, because Grafana runs in its own container.
 
-### 6. Import Grafana Dashboard
-- Go to http://localhost:3000 → Dashboards → "Flask App - Exercise 06 Dashboard"
-- (Auto-provisioned via `grafana-dashboard.json`)
+## Actual Observed Results
 
-## Prometheus Metrics Exposed
+- **Containers:** `ex06-flask` (healthy), `ex06-prometheus` and `ex06-grafana` were all Up.
+- **Prometheus targets** (http://localhost:9090/targets): `flask-app` showed **1/1 up** and `prometheus` showed **1/1 up**.
+- **Grafana dashboard** "Flask App - Exercise 06 Dashboard":
+  - Request Rate panel showed lines for `/ [200]` and `/health [200]`.
+  - Active Requests showed 1.
+  - Total Requests (Last Hour) showed a value of about 32.6, which is a Prometheus estimate.
+  - The p95 Response Time panel stayed empty, because there was not enough latency data in the window.
+- **Alerts** (http://localhost:9090/alerts): group `flask_alerts` showed **INACTIVE (3)**. All three rules were loaded and none fired. **No alert was triggered** during this run.
 
-| Metric | Type | Description |
-|---|---|---|
-| `flask_requests_total` | Counter | Total HTTP requests by method, endpoint, status |
-| `flask_request_duration_seconds` | Histogram | Request duration with buckets |
-| `flask_active_requests` | Gauge | Currently in-flight requests |
-| `flask_app_info` | Gauge | App version and environment info |
+## Troubleshooting
 
-## Alert Rules Defined
+| Problem | Fix |
+|---|---|
+| Grafana panels show "No data" with a warning icon | The datasource was missing or pointed at an old ID. Add a Prometheus datasource with URL `http://prometheus:9090`, click Save & test, then select it in the dashboard's datasource dropdown. This was done manually in this run |
+| Target shows DOWN | Check `docker compose ps` and that the scrape address is `flask-app:5000` |
+| Dashboard empty | Generate traffic with the `Invoke-RestMethod` loop and set the time range to the last 5 minutes |
+| `failed to connect to the docker API` | Docker Desktop is not running yet |
 
-| Alert | Condition | Severity |
-|---|---|---|
-| `HighRequestRate` | `rate > 10 req/s for 1m` | Warning |
-| `SlowResponseTime` | `p95 latency > 500ms for 2m` | Warning |
-| `FlaskAppDown` | `up == 0 for 30s` | Critical |
-
-> **Alert Status**: Alerts are **defined** in `alert_rules.yml` but were **not triggered** during this lab session as load was insufficient to breach thresholds.
-
-## Grafana Dashboard Panels
-1. **Request Rate (req/s)** — Time series of `rate(flask_requests_total[1m])`
-2. **p95 Response Time** — `histogram_quantile(0.95, ...)`
-3. **Active Requests** — Current gauge value
-4. **Total Requests (1h)** — `increase(flask_requests_total[1h])`
+## Key Concepts
+- **Counter, Gauge, Histogram:** the three Prometheus metric types used for requests, active requests and latency.
+- **Scraping:** Prometheus pulls metrics from `/metrics` on a schedule.
+- **PromQL:** the query language, for example `rate(flask_requests_total[1m])`.
+- **Alert rule `for:`:** the condition must stay true for that long before the alert fires.
 
 ## Viva Questions
 
-**Q1: What is Prometheus?**  
-Prometheus is an open-source monitoring system with a time-series database. It scrapes metrics from target HTTP endpoints at configured intervals.
+**Q1: How does Prometheus collect metrics?**
+It scrapes the `/metrics` endpoint of each target at a set interval.
 
-**Q2: What is the difference between Counter, Gauge, and Histogram?**  
-- **Counter**: Only increases (e.g., total requests)
-- **Gauge**: Can increase or decrease (e.g., active connections)
-- **Histogram**: Measures distribution of values across buckets (e.g., response times)
+**Q2: What is the difference between a Counter and a Gauge?**
+A counter only goes up, such as total requests. A gauge can go up and down, such as active requests.
 
-**Q3: What is `rate()` in PromQL?**  
-`rate(metric[5m])` calculates the per-second average rate of increase over the last 5 minutes — used for counters.
+**Q3: What does `rate()` do?**
+It calculates the per-second average increase of a counter over a time window.
 
-**Q4: How does Grafana connect to Prometheus?**  
-Via a datasource configuration pointing to the Prometheus HTTP API (`http://prometheus:9090`). Grafana queries PromQL and renders the results.
+**Q4: Why must the Grafana datasource URL be `http://prometheus:9090`?**
+Grafana runs in its own container, so `localhost` would point to itself. The service name resolves on the Docker network.
 
-**Q5: What is `histogram_quantile(0.95, ...)`?**  
-It calculates the 95th percentile (p95) from a histogram metric — meaning 95% of requests are faster than this value.
+**Q5: What does `for: 1m` mean in an alert rule?**
+The condition must be true continuously for one minute before the alert moves from Pending to Firing.
+
+**Q6: Was any alert triggered?**
+No. All three rules were loaded and Inactive. To trigger `FlaskAppDown`, stop the Flask container and wait about 30 seconds.
 
 ## Conclusion
-Flask application built with 4 Prometheus metrics (Counter, Histogram, Gauge). Prometheus scrape config targets `/metrics` every 5s. Grafana dashboard pre-provisioned with 4 meaningful panels. Three alert rules configured for production-ready monitoring.
+Prometheus scraped the Flask metrics endpoint (target UP), Grafana displayed the request metrics on a dashboard, and three alert rules were loaded. The rules stayed Inactive, so none was triggered.
