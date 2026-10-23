@@ -17,9 +17,10 @@ pipeline {
                         echo "Python version:"
                         python3 --version
                         echo "Creating virtual environment..."
-                        python3 -m venv venv
+                        rm -rf venv
+                        python3 -m venv --without-pip venv
                         echo "Installing dependencies..."
-                        ./venv/bin/pip install flask==3.0.3 pytest
+                        python3 -m pip --python venv/bin/python install flask==3.0.3 pytest
                         echo "Build complete."
                     '''
                 }
