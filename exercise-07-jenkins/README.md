@@ -1,119 +1,100 @@
-# Exercise 07 — Jenkins Installation and Configuration
+# Exercise 07 — Jenkins Installation
 
 ## Objective
-Run Jenkins LTS using Docker with persistent storage on port 8081, complete the initial setup workflow, create a Freestyle job that executes shell commands, and verify a successful build.
+Run Jenkins LTS in Docker with persistent storage, complete the initial setup, create a Freestyle job that runs shell commands, and verify a successful build.
 
 ## Technologies Used
-- Jenkins LTS (jenkins/jenkins:lts-jdk17)
-- Docker with named volume (`jenkins_home`)
-- Docker Engine 29.9.1
+- Jenkins LTS (`jenkins/jenkins:lts-jdk17`)
+- Docker Desktop (Linux containers)
+- Named Docker volume for persistence
 
 ## Prerequisites
 - Docker Desktop running
 - Port 8081 free
-- `jenkins_home` Docker volume (created automatically)
-
-## Project Structure
-```
-exercise-07-jenkins/
-└── README.md    # Setup instructions and verification
-```
 
 ## Step-by-Step Commands
 
-### 1. Start Jenkins Container
+### 1. Start Jenkins
 ```powershell
-docker run -d `
-  --name ex07-jenkins `
-  -p 8081:8080 `
-  -p 50000:50000 `
-  -v jenkins_home:/var/jenkins_home `
-  jenkins/jenkins:lts-jdk17
+docker run -d --name ex07-jenkins -p 8081:8080 -p 50000:50000 -v jenkins_home:/var/jenkins_home jenkins/jenkins:lts-jdk17
+```
+If the container already exists:
+```powershell
+docker start ex07-jenkins
 ```
 
-### 2. Get Initial Admin Password
+### 2. Get the initial admin password
 ```powershell
 docker exec ex07-jenkins cat /var/jenkins_home/secrets/initialAdminPassword
 ```
 
-### 3. Complete Setup (Browser)
+### 3. Complete setup in the browser
 1. Open http://localhost:8081
-2. Enter the initial admin password
-3. Install suggested plugins
-4. Create an admin user
+2. Paste the initial admin password
+3. Click **Install suggested plugins**
+4. Create the first admin user
+5. Accept the default Jenkins URL
 
-### 4. Create Freestyle Job (Browser)
-1. Click "New Item"
-2. Enter name: `hello-devops`
-3. Select "Freestyle project" → OK
-4. Under "Build Steps" → "Execute shell":
-   ```bash
-   echo "Hello from Jenkins Freestyle Job!"
-   echo "Build Number: $BUILD_NUMBER"
-   echo "Job Name: $JOB_NAME"
-   date
-   python3 --version || python --version
-   echo "Build Complete!"
-   ```
-5. Click "Save" → "Build Now"
-
-### 5. Verify Build
-- Check Console Output for `Finished: SUCCESS`
-
-## Actual Observed Results
-
+### 4. Create a Freestyle job
+1. **New Item** → name `hello-devops` → **Freestyle project** → OK
+2. **Build Steps** → **Add build step** → **Execute shell**:
 ```
-Container ID   Image                       Command   Status         Ports
-de037c83956a   jenkins/jenkins:lts-jdk17   ...       Up 30 seconds  0.0.0.0:8081->8080/tcp
-
-Initial Admin Password: e73af3667cb342e8b0dc3b30aa80be0b
+echo "Build number: $BUILD_NUMBER"
+date
+echo "Hello Jenkins"
 ```
-
-> **Manual Step Required**: Browser setup at http://localhost:8081  
-> Complete plugin installation and admin user creation to finish this exercise.
-
-## Verification Commands
-```powershell
-# Check container is running
-docker ps --filter name=ex07-jenkins
-
-# Check Jenkins logs
-docker logs ex07-jenkins --tail=20
-
-# Check Jenkins is responding
-Invoke-WebRequest http://localhost:8081 -UseBasicParsing | Select-Object StatusCode
-
-# Check volume
-docker volume inspect jenkins_home
-```
+3. **Save** → **Build Now**
+4. Open the build → **Console Output**
 
 ## Configuration Explanation
-- **Port 8081** — External access port (mapped from container's 8080)
-- **Port 50000** — Jenkins agent communication port
-- **jenkins_home volume** — Persists all Jenkins data across container restarts
-- **lts-jdk17** — Long-term support Jenkins with Java 17
+- `-p 8081:8080` maps Jenkins' web port to 8081 on the host.
+- `-p 50000:50000` is the port for inbound build agents.
+- `-v jenkins_home:/var/jenkins_home` stores Jenkins data in a named volume, so jobs and settings survive container restarts.
+
+## Actual Observed Results
+Job `hello-devops`, build #1 console output:
+
+```
+Started by user admin
+Running as SYSTEM
+Building in workspace /var/jenkins_home/workspace/hello-devops
++ echo Build number: 1
+Build number: 1
++ date
+Tue Oct 20 18:13:33 UTC 2026
++ echo Hello Jenkins
+Hello Jenkins
+Finished: SUCCESS
+```
+
+Jenkins version: 2.541.3.
 
 ## Troubleshooting
-| Issue | Fix |
+
+| Problem | Fix |
 |---|---|
-| Port 8081 in use | `docker stop <conflicting-container>` |
-| Can't get password | Wait 30-60s for Jenkins to initialize |
-| Plugins fail to install | Check network, retry installation |
-| Container exits immediately | `docker logs ex07-jenkins` for startup errors |
+| Can't get the password | Wait 30 to 60 seconds for Jenkins to initialize |
+| Jenkins is slow or Docker stops | Close other apps, keep Minikube stopped, and give Docker more memory |
+| Port 8081 already in use | Stop the other service or change the host port |
+
+## Key Concepts
+- **Jenkins:** an automation server for CI/CD.
+- **Freestyle job:** a simple job configured through the UI with build steps.
+- **Named volume:** persistent storage that outlives the container.
 
 ## Viva Questions
 
-**Q1: Why use a named volume for Jenkins?**  
-Named volumes (`jenkins_home`) persist data independently of the container lifecycle. If the container is recreated, all jobs, builds, and configuration survive.
+**Q1: Why use a named volume for Jenkins?**
+So jobs, plugins and settings are kept when the container is stopped or recreated.
 
-**Q2: What is the Jenkins agent port (50000) used for?**  
-Port 50000 is the JNLP (Java Web Start) port used by Jenkins build agents to connect to the controller.
+**Q2: What is `initialAdminPassword` for?**
+It unlocks Jenkins on first start, so only someone with access to the server can finish the setup.
 
-**Q3: What is the difference between a Freestyle job and a Pipeline job?**  
-Freestyle jobs are configured via UI forms. Pipeline jobs use code (Jenkinsfile) stored in version control, enabling Infrastructure-as-Code for CI/CD.
+**Q3: What is a Freestyle project?**
+A basic Jenkins job type configured through the UI, with build steps like "Execute shell".
 
-**Q4: What is the `initialAdminPassword` for?**  
-It's a one-time secret generated during Jenkins startup to protect the setup wizard from unauthorized access.
+**Q4: What does port 50000 do?**
+It is used by inbound agents to connect to the Jenkins controller.
 
 ## Conclusion
-Jenkins LTS container started successfully on port 8081 with named volume `jenkins_home`. Initial admin password retrieved: `e73af3667cb342e8b0dc3b30aa80be0b`. Browser setup required to complete plugin installation and create the first Freestyle job.
+Jenkins LTS ran in Docker with a persistent volume. After completing the setup wizard, the Freestyle job `hello-devops` ran its shell commands and finished with `Finished: SUCCESS`.
